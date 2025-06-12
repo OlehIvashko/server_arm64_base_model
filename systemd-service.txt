@@ -1,0 +1,17 @@
+# Save this as /etc/systemd/system/background-removal.service
+
+[Unit]
+Description=Background Removal API
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/background-removal
+Environment=PATH=/opt/background-removal/venv/bin
+ExecStart=/opt/background-removal/venv/bin/uvicorn server_app:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target 

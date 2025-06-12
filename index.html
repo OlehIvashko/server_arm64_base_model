@@ -559,7 +559,7 @@
                     model_type: selectedModel
                 };
 
-                const response = await fetch('http://localhost:8000/remove-background/', {
+                const response = await fetch('http://ec2-54-176-199-188.us-west-1.compute.amazonaws.com:8000/remove-background/', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -706,13 +706,13 @@
         // Check API availability and load models info on page load
         window.addEventListener('load', async () => {
             try {
-                const response = await fetch('http://localhost:8000/');
+                const response = await fetch('http://ec2-54-176-199-188.us-west-1.compute.amazonaws.com:8000/');
                 if (response.ok) {
                     console.log('API is available');
                     
                     // Load available models info
                     try {
-                        const modelsResponse = await fetch('http://localhost:8000/models');
+                        const modelsResponse = await fetch('http://ec2-54-176-199-188.us-west-1.compute.amazonaws.com/models');
                         if (modelsResponse.ok) {
                             const modelsData = await modelsResponse.json();
                             console.log('Available models:', modelsData.available_models);

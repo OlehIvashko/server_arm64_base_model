@@ -49,10 +49,17 @@ source venv/bin/activate  # On macOS/Linux
 
 3. **Install dependencies:**
 ```bash
-pip install -r requirements-runtime.txt
+pip install -r requirements.txt
+```
+
+**Or use the startup script:**
+```bash
+./run_server.sh
 ```
 
 Note: Models will be automatically downloaded on first use. No manual model setup required!
+
+**Important:** If you encounter package conflicts, use the exact versions from requirements.txt which include compatible flet and albumentations versions.
 
 4. **Start the server:**
 ```bash
