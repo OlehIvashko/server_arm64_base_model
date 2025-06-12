@@ -6,14 +6,14 @@ from transparent_background import Remover
 
 def convert():
     """
-    Завантажує модель ckpt_base.pth (inspyrenet_s-coco.pth) та конвертує її у формат ONNX.
+    Loads ckpt_base.pth (inspyrenet_s-coco.pth) model and converts it to ONNX format.
     """
     print("Starting ONNX conversion for InSPyReNet 'base' model (inspyrenet_s-coco)...")
-    # WORKDIR встановлено в /app у Dockerfile, тому шляхи відносні
+    # Model directory for local development
     model_dir = "models"
-    # Модель буде завантажена як ckpt_base.pth
+    # Model will be loaded as ckpt_base.pth
     pth_filename = "ckpt_base.pth"
-    onnx_filename = "ckpt_base.onnx" # Вихідний файл ONNX
+    onnx_filename = "ckpt_base.onnx"  # Output ONNX file
 
     pth_path = os.path.join(model_dir, pth_filename)
     onnx_path = os.path.join(model_dir, onnx_filename)
@@ -22,8 +22,8 @@ def convert():
         print(f"Error: PyTorch model not found at {pth_path}")
         sys.exit(1)
 
-    # Ініціалізуємо Remover з mode='base' для завантаження правильної архітектури моделі.
-    # jit=False необхідно для отримання стандартної моделі PyTorch, яку можна експортувати.
+    # Initialize Remover with mode='base' to load the correct model architecture.
+    # jit=False is needed to get a standard PyTorch model that can be exported.
     try:
         print(f"Loading model from {pth_path} using transparent_background.Remover (mode='base')...")
         remover = Remover(mode="base", ckpt=pth_path, jit=False, device='cpu')
@@ -36,8 +36,8 @@ def convert():
         print(traceback.format_exc())
         sys.exit(1)
 
-    # Визначаємо розмір вхідних даних для моделі 'base' - 1024x1024.
-    # Це значення взято з конфігурації бібліотеки transparent-background для inspyrenet_s-coco.
+    # Define input size for 'base' model - 1024x1024.
+    # This value is taken from transparent-background library configuration for inspyrenet_s-coco.
     dummy_input_size = (1, 3, 1024, 1024)
     dummy_input = torch.randn(dummy_input_size, device='cpu')
 
