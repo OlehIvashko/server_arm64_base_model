@@ -311,6 +311,7 @@
                     <div class="upload-text">Click to select an image</div>
                     <div class="upload-hint">or drag and drop a file here</div>
                     <div class="upload-hint">Supported formats: JPG, PNG (up to 10MB)</div>
+                    <div class="upload-hint">Large images will be auto-resized to 1024px max (preserving aspect ratio)</div>
                 </div>
                 <input type="file" id="fileInput" accept="image/*">
                 
@@ -333,16 +334,16 @@
                         <label style="font-weight: bold; color: #667eea; margin-bottom: 10px; display: block;">AI Model:</label>
                         <div style="display: flex; gap: 15px; justify-content: center; flex-wrap: wrap;">
                             <label class="mode-label">
-                                <input type="radio" name="model" value="base" checked>
-                                <span class="mode-text">🎯 Base (512×512, best quality)</span>
+                                <input type="radio" name="model" value="base">
+                                <span class="mode-text">🎯 Base (512×512 fit, best quality, ~13s)</span>
                             </label>
                             <label class="mode-label">
-                                <input type="radio" name="model" value="fast">
-                                <span class="mode-text">⚡ Fast (384×384, faster)</span>
+                                <input type="radio" name="model" value="fast" checked>
+                                <span class="mode-text">⚡ Fast (384×384 fit, faster, ~3-5s)</span>
                             </label>
                             <label class="mode-label">
                                 <input type="radio" name="model" value="base-nightly">
-                                <span class="mode-text">🌙 Nightly (512×512, experimental)</span>
+                                <span class="mode-text">🌙 Nightly (512×512 fit, experimental)</span>
                             </label>
                         </div>
                     </div>
@@ -404,6 +405,10 @@
                 <div class="stat-item">
                     <div class="stat-value" id="modelUsed">-</div>
                     <div class="stat-label">Model used</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="deviceUsed">-</div>
+                    <div class="stat-label">Device used</div>
                 </div>
                 <div class="stat-item">
                     <div class="stat-value" id="orientationFixed">-</div>
@@ -469,22 +474,65 @@
 
             selectedFile = file;
             
-            // Convert file to base64
+            // Convert file to base64 with optional resizing
             const reader = new FileReader();
             reader.onload = (e) => {
-                const base64Data = e.target.result;
-                selectedFileBase64 = base64Data.split(',')[1]; // Get only base64 part
-                originalImage.src = base64Data;
-                processBtn.disabled = false;
+                const img = new Image();
+                img.onload = () => {
+                    // Check if image is too large and should be resized
+                    const maxDimension = 1024; // Max width or height
+                    let { width, height } = img;
+                    
+                    if (width > maxDimension || height > maxDimension) {
+                        // Calculate new dimensions maintaining aspect ratio
+                        const ratio = Math.min(maxDimension / width, maxDimension / height);
+                        width = Math.round(width * ratio);
+                        height = Math.round(height * ratio);
+                        
+                        console.log(`Resizing image from ${img.width}×${img.height} to ${width}×${height}`);
+                        
+                        // Create canvas and resize
+                        const canvas = document.createElement('canvas');
+                        const ctx = canvas.getContext('2d');
+                        canvas.width = width;
+                        canvas.height = height;
+                        
+                        // Draw resized image
+                        ctx.drawImage(img, 0, 0, width, height);
+                        
+                        // Get base64 of resized image
+                        const resizedBase64 = canvas.toDataURL('image/jpeg', 0.9);
+                        selectedFileBase64 = resizedBase64.split(',')[1];
+                        originalImage.src = resizedBase64;
+                        
+                        // Update upload box text for resized image
+                        uploadBox.innerHTML = `
+                            <div class="upload-icon">✅📏</div>
+                            <div class="upload-text">File selected & resized: ${file.name}</div>
+                            <div class="upload-hint">Original: ${img.width}×${img.height} → Resized: ${width}×${height}</div>
+                            <div class="upload-hint">Original size: ${(file.size / 1024 / 1024).toFixed(2)} MB</div>
+                        `;
+                    } else {
+                        // Use original image if it's small enough
+                        selectedFileBase64 = e.target.result.split(',')[1];
+                        originalImage.src = e.target.result;
+                        
+                        // Update upload box text for original image
+                        uploadBox.innerHTML = `
+                            <div class="upload-icon">✅</div>
+                            <div class="upload-text">File selected: ${file.name}</div>
+                            <div class="upload-hint">Size: ${img.width}×${img.height} (${(file.size / 1024 / 1024).toFixed(2)} MB)</div>
+                        `;
+                    }
+                    
+                    processBtn.disabled = false;
+                };
+                img.src = e.target.result;
             };
             reader.readAsDataURL(file);
 
-            // Update upload box text
-            uploadBox.innerHTML = `
-                <div class="upload-icon">✅</div>
-                <div class="upload-text">File selected: ${file.name}</div>
-                <div class="upload-hint">Size: ${(file.size / 1024 / 1024).toFixed(2)} MB</div>
-            `;
+            // Update upload box text will be done after image processing
+            // This is moved inside the img.onload callback
 
             hideError();
         }
@@ -549,6 +597,7 @@
                 document.getElementById('resultSize').textContent = 
                     `${result.diagnostics.result_size_wh[0]}×${result.diagnostics.result_size_wh[1]}`;
                 document.getElementById('modelUsed').textContent = result.diagnostics.model_used;
+                document.getElementById('deviceUsed').textContent = result.diagnostics.device_used.toUpperCase();
                 document.getElementById('orientationFixed').textContent = 
                     result.diagnostics.orientation_was_fixed ? '✅ Yes' : '➖ No';
 
@@ -597,25 +646,43 @@
                 function checkComplete() {
                     loadedImages++;
                     if (loadedImages === 2) {
-                        // Set canvas size
+                        // Use original image dimensions for canvas
                         canvas.width = originalImg.width;
                         canvas.height = originalImg.height;
                         
-                        // Draw original image
+                        // Draw original image at full size
                         ctx.drawImage(originalImg, 0, 0);
                         
                         // Get pixel data
                         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
                         const data = imageData.data;
                         
-                        // Create temporary canvas for mask
+                        // Create temporary canvas for mask - same size as original
                         const maskCanvas = document.createElement('canvas');
                         const maskCtx = maskCanvas.getContext('2d');
                         maskCanvas.width = canvas.width;
                         maskCanvas.height = canvas.height;
-                        maskCtx.drawImage(maskImg, 0, 0, canvas.width, canvas.height);
                         
-                        const maskData = maskCtx.getImageData(0, 0, canvas.width, canvas.height);
+                        // Clear mask canvas with black (transparent areas)
+                        maskCtx.fillStyle = 'black';
+                        maskCtx.fillRect(0, 0, maskCanvas.width, maskCanvas.height);
+                        
+                        // Calculate how to fit the mask onto the original image
+                        // The mask came from the model size (e.g., 512x512) but may contain padding
+                        // We need to scale it back to match the original image
+                        const scaleX = canvas.width / maskImg.width;
+                        const scaleY = canvas.height / maskImg.height;
+                        const scale = Math.min(scaleX, scaleY);
+                        
+                        const scaledWidth = maskImg.width * scale;
+                        const scaledHeight = maskImg.height * scale;
+                        const offsetX = (canvas.width - scaledWidth) / 2;
+                        const offsetY = (canvas.height - scaledHeight) / 2;
+                        
+                        // Draw mask scaled and centered
+                        maskCtx.drawImage(maskImg, offsetX, offsetY, scaledWidth, scaledHeight);
+                        
+                        const maskData = maskCtx.getImageData(0, 0, maskCanvas.width, maskCanvas.height);
                         const mask = maskData.data;
                         
                         // Apply mask as alpha channel

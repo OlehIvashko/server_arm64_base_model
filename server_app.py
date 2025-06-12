@@ -54,6 +54,17 @@ app.add_middleware(
 
 # --- Helper Functions ---
 
+def _get_optimal_device():
+    """Determine the best available device for inference"""
+    import torch
+    
+    if torch.backends.mps.is_available():
+        return 'mps'  # Apple Silicon GPU
+    elif torch.cuda.is_available():
+        return 'cuda'  # NVIDIA GPU
+    else:
+        return 'cpu'   # CPU fallback
+
 def _init_remover(model_type: str = "base") -> Remover:
     """Initialize transparent-background Remover with specified model type"""
     global REMOVER, CURRENT_MODEL
@@ -71,6 +82,10 @@ def _init_remover(model_type: str = "base") -> Remover:
             )
         
         try:
+            # Determine optimal device
+            device = _get_optimal_device()
+            print(f"Using device: {device}")
+            
             # Check if local model file exists
             model_info = config[model_type]
             local_model_path = os.path.join(MODELS_DIR, model_info['ckpt_name'])
@@ -78,20 +93,34 @@ def _init_remover(model_type: str = "base") -> Remover:
             if os.path.exists(local_model_path):
                 print(f"Using local model: {local_model_path}")
                 # Initialize remover with local model path
-                REMOVER = Remover(mode=model_type, ckpt=local_model_path, device='cpu')
+                REMOVER = Remover(mode=model_type, ckpt=local_model_path, device=device)
             else:
                 print(f"Local model not found, will download automatically...")
                 # Initialize remover without path (will auto-download)
-                REMOVER = Remover(mode=model_type, device='cpu')
+                REMOVER = Remover(mode=model_type, device=device)
             
             CURRENT_MODEL = model_type
             
-            print(f"Model '{model_type}' loaded successfully.")
+            print(f"Model '{model_type}' loaded successfully on {device}.")
             print(f"Base size: {model_info['base_size']}")
             
         except Exception as e:
             print(f"Error loading model '{model_type}': {e}")
-            raise HTTPException(status_code=500, detail=f"Failed to load model: {str(e)}")
+            # Fallback to CPU if GPU fails
+            if device != 'cpu':
+                print("Falling back to CPU...")
+                try:
+                    if os.path.exists(local_model_path):
+                        REMOVER = Remover(mode=model_type, ckpt=local_model_path, device='cpu')
+                    else:
+                        REMOVER = Remover(mode=model_type, device='cpu')
+                    CURRENT_MODEL = model_type
+                    print(f"Model '{model_type}' loaded successfully on CPU.")
+                except Exception as cpu_error:
+                    print(f"CPU fallback also failed: {cpu_error}")
+                    raise HTTPException(status_code=500, detail=f"Failed to load model: {str(e)}")
+            else:
+                raise HTTPException(status_code=500, detail=f"Failed to load model: {str(e)}")
     
     return REMOVER
 
@@ -112,6 +141,43 @@ def _fix_image_orientation(img: Image.Image) -> Tuple[Image.Image, bool]:
         print(f"Error fixing orientation: {e}")
         # If error occurred, return original image
         return img, False
+
+def _resize_with_padding(img: Image.Image, target_size: Tuple[int, int], pad_color: Tuple[int, int, int] = (0, 0, 0)) -> Image.Image:
+    """
+    Resize image to target size while preserving aspect ratio using padding
+    
+    Args:
+        img: Input PIL Image
+        target_size: Target size as (width, height)
+        pad_color: Color for padding (default: black)
+    
+    Returns:
+        Resized image with padding
+    """
+    target_width, target_height = target_size
+    original_width, original_height = img.size
+    
+    # Calculate scaling factor to fit image within target size
+    scale = min(target_width / original_width, target_height / original_height)
+    
+    # Calculate new dimensions
+    new_width = int(original_width * scale)
+    new_height = int(original_height * scale)
+    
+    # Resize image maintaining aspect ratio
+    resized_img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+    
+    # Create new image with target size and pad color
+    padded_img = Image.new("RGB", target_size, pad_color)
+    
+    # Calculate position to paste resized image (center it)
+    paste_x = (target_width - new_width) // 2
+    paste_y = (target_height - new_height) // 2
+    
+    # Paste resized image onto padded background
+    padded_img.paste(resized_img, (paste_x, paste_y))
+    
+    return padded_img
 
 def _get_model_info(model_type: str) -> Dict[str, Any]:
     """Get model information from config"""
@@ -179,9 +245,9 @@ async def remove_background(request: ImageRequest) -> Dict[str, Any]:
         original_size_wh = original_pil_img_rgb.size
         model_base_size = model_info.get("base_size", [512, 512])
         
-        # Resize image to model size for processing
+        # Resize image to model size while preserving aspect ratio
         model_size_tuple = tuple(model_base_size)  # Convert [w, h] to (w, h)
-        img_resized_for_model = original_pil_img_rgb.resize(model_size_tuple, Image.Resampling.LANCZOS)
+        img_resized_for_model = _resize_with_padding(original_pil_img_rgb, model_size_tuple)
         
         preprocess_time = round((time.perf_counter() - start_preprocess) * 1000)
 
@@ -230,6 +296,9 @@ async def remove_background(request: ImageRequest) -> Dict[str, Any]:
         # Get actual result size (should be model size)
         result_size_wh = result_img.size if result_img else model_base_size
         
+        # Get device info
+        device_used = _get_optimal_device()
+        
         response = {
             result_key: result_base64,
             "mode": request.mode,
@@ -244,7 +313,8 @@ async def remove_background(request: ImageRequest) -> Dict[str, Any]:
                 "model_base_size_wh": model_base_size,
                 "result_size_wh": result_size_wh,
                 "orientation_was_fixed": orientation_was_fixed,
-                "model_used": request.model_type
+                "model_used": request.model_type,
+                "device_used": device_used
             }
         }
         return response
