@@ -1,24 +1,28 @@
 # 🎨 Background Removal API
 
-FastAPI-based web service for automatic background removal from images using AI. Built with InSPyReNet model and ONNX runtime for high performance inference.
+FastAPI-based web service for automatic background removal from images using AI. Built with transparent-background library and multiple InSPyReNet models for optimal performance.
 
 ## ✨ Features
 
-- **🚀 Fast AI-powered background removal** using InSPyReNet model
+- **🚀 Fast AI-powered background removal** using InSPyReNet models
+- **🎯 Multiple AI models:**
+  - **Base** (1024×1024) - best quality for high-resolution images
+  - **Fast** (384×384) - faster processing for quick results  
+  - **Base-nightly** (1024×1024) - experimental features and improvements
 - **🔄 Two processing modes:**
   - **Mask mode** (fast) - returns alpha mask, composition in browser
   - **Image mode** (convenient) - returns ready-to-use PNG with transparent background
 - **📱 EXIF orientation handling** - automatically fixes rotated mobile photos
 - **🌐 Base64 API** - simple JSON interface, no file uploads
 - **📊 Detailed performance metrics** - processing time breakdown
-- **🎯 Beautiful web interface** - drag & drop image upload
+- **🎯 Beautiful web interface** - drag & drop image upload with model selection
 
 ## 🏗️ Architecture
 
-- **Backend:** FastAPI + ONNX Runtime + OpenCV
-- **Model:** InSPyReNet (inspyrenet_s-coco) converted to ONNX
+- **Backend:** FastAPI + transparent-background library
+- **Models:** InSPyReNet (base, fast, base-nightly) with automatic downloading
 - **Frontend:** Pure HTML5/CSS3/JavaScript with Canvas API
-- **Processing:** 1024×1024 input resolution, optimized for ARM64
+- **Processing:** Variable resolution (384×384 to 1024×1024) depending on model
 
 ## 📋 Requirements
 
@@ -43,34 +47,19 @@ python3 -m venv venv
 source venv/bin/activate  # On macOS/Linux
 ```
 
-3. **Install PyTorch for CPU:**
-```bash
-pip install torch==2.2.2 torchvision==0.17.2 --index-url https://download.pytorch.org/whl/cpu
-```
-
-4. **Install build dependencies:**
-```bash
-pip install -r requirements-builder.txt
-```
-
-5. **Download and convert model:**
-```bash
-mkdir -p models
-curl -L "https://github.com/plemeri/transparent-background/releases/download/1.2.12/ckpt_base.pth" -o "models/ckpt_base.pth"
-python convert_to_onnx.py
-```
-
-6. **Install runtime dependencies:**
+3. **Install dependencies:**
 ```bash
 pip install -r requirements-runtime.txt
 ```
 
-7. **Start the server:**
+Note: Models will be automatically downloaded on first use. No manual model setup required!
+
+4. **Start the server:**
 ```bash
 python server_app.py
 ```
 
-8. **Open web interface:**
+5. **Open web interface:**
    - Open `index.html` in your browser
    - Or visit API docs at http://localhost:8000/docs
 
@@ -89,9 +78,13 @@ docker run -p 8000:8000 background-removal-api
 2. **Choose processing mode:**
    - 🎭 **Mask mode** - Fast processing, composition in browser
    - 🖼️ **Image mode** - Slower, returns ready PNG file
-3. **Upload image** - drag & drop or click to select
-4. **Process** - click "Process Image" button
-5. **Download result** - click download button for PNG file
+3. **Choose AI model:**
+   - 🎯 **Base** - Best quality (1024×1024)
+   - ⚡ **Fast** - Faster processing (384×384)
+   - 🌙 **Nightly** - Experimental features (1024×1024)
+4. **Upload image** - drag & drop or click to select
+5. **Process** - click "Process Image" button
+6. **Download result** - click download button for PNG file
 
 ### API Usage
 
@@ -102,7 +95,8 @@ docker run -p 8000:8000 background-removal-api
 {
   "image_base64": "base64_encoded_image_data",
   "filename": "image.jpg",
-  "mode": "mask"  // "mask" or "image"
+  "mode": "mask",  // "mask" or "image"
+  "model_type": "base"  // "base", "fast", or "base-nightly"
 }
 ```
 
@@ -112,15 +106,16 @@ docker run -p 8000:8000 background-removal-api
   "mask_base64_png": "base64_encoded_mask", // if mode="mask"
   "image_base64_png": "base64_encoded_image", // if mode="image" 
   "mode": "mask",
+  "model_type": "base",
   "filename": "image.jpg",
   "diagnostics": {
     "total_duration_ms": 6200,
-    "preprocess_duration_ms": 150,
     "inference_duration_ms": 5800,
     "postprocess_duration_ms": 250,
     "original_size_wh": [1920, 1080],
-    "model_input_size_wh": [1024, 1024],
-    "orientation_was_fixed": true
+    "model_base_size_wh": [1024, 1024],
+    "orientation_was_fixed": true,
+    "model_used": "base"
   }
 }
 ```
@@ -131,13 +126,14 @@ docker run -p 8000:8000 background-removal-api
 IMAGE_BASE64=$(base64 -i your_image.jpg)
 
 # Make API request
-curl -X POST "http://localhost:8000/remove-background/" \
-  -H "Content-Type: application/json" \
-  -d "{
-    \"image_base64\": \"$IMAGE_BASE64\",
-    \"filename\": \"your_image.jpg\",
-    \"mode\": \"mask\"
-  }"
+ curl -X POST "http://localhost:8000/remove-background/" \
+   -H "Content-Type: application/json" \
+   -d "{
+     \"image_base64\": \"$IMAGE_BASE64\",
+     \"filename\": \"your_image.jpg\",
+     \"mode\": \"mask\",
+     \"model_type\": \"base\"
+   }"
 ```
 
 #### Python Example:
@@ -156,7 +152,8 @@ response = requests.post(
     json={
         "image_base64": image_base64,
         "filename": "your_image.jpg",
-        "mode": "mask"
+        "mode": "mask",
+        "model_type": "base"
     }
 )
 
@@ -167,22 +164,32 @@ print(f"Processing took {result['diagnostics']['total_duration_ms']}ms")
 ## ⚡ Performance
 
 **Typical processing times on Apple M1:**
-- **Preprocessing:** 100-200ms (resize, normalization)
-- **AI Inference:** 5000-6000ms (model execution) 
-- **Postprocessing:** 250-300ms (mask mode) / 800-1200ms (image mode)
-- **Total:** ~6-7 seconds per image
+- **Base model (1024×1024):** 4000-6000ms total
+- **Fast model (384×384):** 1000-2000ms total  
+- **Postprocessing:** 100-300ms (mask mode) / 400-800ms (image mode)
 
-**Speed comparison:**
-- **Mask mode:** 17x faster postprocessing
-- **Base64 vs multipart:** No significant difference
+**Speed comparison by model:**
+- **Fast model:** ~3x faster than Base model
+- **Mask mode:** 2-3x faster postprocessing than image mode
 - **EXIF fixing:** +50-100ms when needed
+
+**Model quality vs speed:**
+- **Base:** Best quality, slower processing
+- **Fast:** Good quality, much faster processing
+- **Base-nightly:** Experimental features, similar speed to base
 
 ## 🔧 Configuration
 
 ### Model Settings
-```python
-MODEL_INPUT_SIZE = (1024, 1024)  # Fixed model input size
-MODEL_PATH = "models/ckpt_base.onnx"
+Models are configured in `models/config.yaml`:
+```yaml
+base:
+  url: "https://github.com/plemeri/transparent-background/releases/download/1.2.12/ckpt_base.pth"
+  base_size: [1024, 1024]
+
+fast:
+  url: "https://github.com/plemeri/transparent-background/releases/download/1.2.12/ckpt_fast.pth"
+  base_size: [384, 384]
 ```
 
 ### Server Settings
@@ -208,67 +215,76 @@ app.add_middleware(
 ```
 server_arm64_base_model/
 ├── server_app.py              # Main FastAPI application
-├── convert_to_onnx.py          # Model conversion script
 ├── index.html                  # Web interface
 ├── requirements-runtime.txt    # Runtime dependencies
 ├── requirements-builder.txt    # Build dependencies  
 ├── Dockerfile                  # Docker configuration
 ├── models/                     # Model files directory
-│   ├── ckpt_base.pth          # Original PyTorch model
-│   └── ckpt_base.onnx         # Converted ONNX model
+│   └── config.yaml            # Model configuration
 ├── .gitignore                  # Git ignore rules
 └── README.md                   # This file
 ```
+
+Note: Model files (.pth) are automatically downloaded by transparent-background library on first use.
 
 ## 🐛 Troubleshooting
 
 ### Common Issues
 
-**1. "ONNX model not found" error:**
+**1. "Model config not found" error:**
 ```bash
-# Make sure model is downloaded and converted
-mkdir -p models
-curl -L "https://github.com/plemeri/transparent-background/releases/download/1.2.12/ckpt_base.pth" -o "models/ckpt_base.pth"
-python convert_to_onnx.py
+# Make sure config.yaml exists in models directory
+ls models/config.yaml
 ```
 
-**2. "Invalid input data type" error:**
+**2. "Model download failed" error:**
+- Check internet connection
+- Models are downloaded automatically on first use
+- Large files (100-400MB) may take time to download
+
+**3. "Invalid input data type" error:**
 ```bash
 # Install compatible NumPy version
 pip install "numpy<2.0"
 ```
 
-**3. "CORS policy" error in browser:**
+**4. "CORS policy" error in browser:**
 - Make sure server is running on localhost:8000
 - Check browser console for specific error details
 
-**4. Slow processing:**
-- Use mask mode for faster processing
-- Check available RAM (model needs ~2GB)
+**5. Slow processing:**
+- Use **fast model** for quicker results
+- Use **mask mode** for faster postprocessing
+- Check available RAM (models need 1-3GB)
 - Monitor CPU usage during inference
 
 ### Performance Optimization
 
 **For faster processing:**
-1. Use **mask mode** instead of image mode
-2. Resize large images before processing
-3. Use **SSD storage** for model files
+1. Use **fast model** (384×384) for quick results
+2. Use **mask mode** instead of image mode  
+3. Choose appropriate model based on needs:
+   - **Fast**: General use, good speed/quality balance
+   - **Base**: High quality requirements
 4. Ensure adequate **RAM** (8GB+)
 
 **For production deployment:**
-1. Use **GPU inference** if available
+1. Use **GPU inference** with transparent-background GPU support
 2. Implement **request queuing** for high load
 3. Add **image caching** for repeated requests
-4. Set up **load balancing** for multiple instances
+4. Choose **fast model** for high-volume scenarios
+5. Set up **load balancing** for multiple instances
 
 ## 🔮 Roadmap
 
-- [ ] **GPU acceleration** with CUDA/MPS providers
+- [ ] **GPU acceleration** with CUDA/Metal support
 - [ ] **Batch processing** for multiple images
 - [ ] **WebSocket** support for real-time processing
-- [ ] **Multiple model formats** (different quality/speed tradeoffs)
+- [ ] **Custom model training** and fine-tuning
 - [ ] **Background replacement** instead of just removal
 - [ ] **REST API authentication** for production use
+- [ ] **Model caching** and optimization
+- [ ] **Video processing** support
 
 ## 📄 License
 

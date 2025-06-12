@@ -1,2 +1,3 @@
 onnx
-transparent-background
+transparent-background==1.3.3
+PyYAML==6.0.1

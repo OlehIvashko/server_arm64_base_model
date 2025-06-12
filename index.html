@@ -315,14 +315,37 @@
                 <input type="file" id="fileInput" accept="image/*">
                 
                 <div class="mode-selector">
-                    <label class="mode-label">
-                        <input type="radio" name="mode" value="mask" checked>
-                        <span class="mode-text">🎭 Mask only (fast)</span>
-                    </label>
-                    <label class="mode-label">
-                        <input type="radio" name="mode" value="image">
-                        <span class="mode-text">🖼️ Ready image (slower)</span>
-                    </label>
+                    <div style="width: 100%; text-align: center; margin-bottom: 20px;">
+                        <label style="font-weight: bold; color: #667eea; margin-bottom: 10px; display: block;">Processing Mode:</label>
+                        <div style="display: flex; gap: 20px; justify-content: center;">
+                            <label class="mode-label">
+                                <input type="radio" name="mode" value="mask" checked>
+                                <span class="mode-text">🎭 Mask only (fast)</span>
+                            </label>
+                            <label class="mode-label">
+                                <input type="radio" name="mode" value="image">
+                                <span class="mode-text">🖼️ Ready image (slower)</span>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div style="width: 100%; text-align: center;">
+                        <label style="font-weight: bold; color: #667eea; margin-bottom: 10px; display: block;">AI Model:</label>
+                        <div style="display: flex; gap: 15px; justify-content: center; flex-wrap: wrap;">
+                            <label class="mode-label">
+                                <input type="radio" name="model" value="base" checked>
+                                <span class="mode-text">🎯 Base (512×512, best quality)</span>
+                            </label>
+                            <label class="mode-label">
+                                <input type="radio" name="model" value="fast">
+                                <span class="mode-text">⚡ Fast (384×384, faster)</span>
+                            </label>
+                            <label class="mode-label">
+                                <input type="radio" name="model" value="base-nightly">
+                                <span class="mode-text">🌙 Nightly (512×512, experimental)</span>
+                            </label>
+                        </div>
+                    </div>
                 </div>
                 
                 <button class="process-btn" id="processBtn" disabled>Process Image</button>
@@ -371,8 +394,16 @@
                     <div class="stat-label">Original size</div>
                 </div>
                 <div class="stat-item">
-                    <div class="stat-value" id="modelSize">1024×1024</div>
+                    <div class="stat-value" id="modelSize">-</div>
                     <div class="stat-label">Model size</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="resultSize">-</div>
+                    <div class="stat-label">Result size</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="modelUsed">-</div>
+                    <div class="stat-label">Model used</div>
                 </div>
                 <div class="stat-item">
                     <div class="stat-value" id="orientationFixed">-</div>
@@ -469,13 +500,15 @@
             hideError();
 
             try {
-                // Get selected mode
+                // Get selected mode and model
                 const selectedMode = document.querySelector('input[name="mode"]:checked').value;
+                const selectedModel = document.querySelector('input[name="model"]:checked').value;
                 
                 const requestData = {
                     image_base64: selectedFileBase64,
                     filename: selectedFile.name,
-                    mode: selectedMode
+                    mode: selectedMode,
+                    model_type: selectedModel
                 };
 
                 const response = await fetch('http://localhost:8000/remove-background/', {
@@ -511,6 +544,11 @@
                 document.getElementById('postprocessTime').textContent = result.diagnostics.postprocess_duration_ms;
                 document.getElementById('originalSize').textContent = 
                     `${result.diagnostics.original_size_wh[0]}×${result.diagnostics.original_size_wh[1]}`;
+                document.getElementById('modelSize').textContent = 
+                    `${result.diagnostics.model_base_size_wh[0]}×${result.diagnostics.model_base_size_wh[1]}`;
+                document.getElementById('resultSize').textContent = 
+                    `${result.diagnostics.result_size_wh[0]}×${result.diagnostics.result_size_wh[1]}`;
+                document.getElementById('modelUsed').textContent = result.diagnostics.model_used;
                 document.getElementById('orientationFixed').textContent = 
                     result.diagnostics.orientation_was_fixed ? '✅ Yes' : '➖ No';
 
@@ -598,12 +636,24 @@
             });
         }
 
-        // Check API availability on page load
+        // Check API availability and load models info on page load
         window.addEventListener('load', async () => {
             try {
                 const response = await fetch('http://localhost:8000/');
                 if (response.ok) {
                     console.log('API is available');
+                    
+                    // Load available models info
+                    try {
+                        const modelsResponse = await fetch('http://localhost:8000/models');
+                        if (modelsResponse.ok) {
+                            const modelsData = await modelsResponse.json();
+                            console.log('Available models:', modelsData.available_models);
+                            console.log('Current model:', modelsData.current_model);
+                        }
+                    } catch (err) {
+                        console.log('Could not load models info:', err.message);
+                    }
                 } else {
                     showError('API is not available. Make sure the server is running on localhost:8000');
                 }
