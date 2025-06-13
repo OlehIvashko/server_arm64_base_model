@@ -82,10 +82,11 @@ def _init_remover(model_type: str = "base") -> Remover:
             )
         
         try:
-            # Determine optimal device
+            # # Force CPU usage only
+            # device = 'cpu'
+            # print(f"Using device: {device} (forced CPU-only mode)")
             device = _get_optimal_device()
             print(f"Using device: {device}")
-            
             # Check if local model file exists
             model_info = config[model_type]
             local_model_path = os.path.join(MODELS_DIR, model_info['ckpt_name'])
@@ -93,12 +94,13 @@ def _init_remover(model_type: str = "base") -> Remover:
             if os.path.exists(local_model_path):
                 print(f"Using local model: {local_model_path}")
                 # Initialize remover with local model path
+                # REMOVER = Remover(mode=model_type, ckpt=local_model_path, device='cpu')
                 REMOVER = Remover(mode=model_type, ckpt=local_model_path, device=device)
             else:
                 print(f"Local model not found, will download automatically...")
                 # Initialize remover without path (will auto-download)
+                # REMOVER = Remover(mode=model_type, device='cpu')
                 REMOVER = Remover(mode=model_type, device=device)
-            
             CURRENT_MODEL = model_type
             
             print(f"Model '{model_type}' loaded successfully on {device}.")
@@ -296,9 +298,10 @@ async def remove_background(request: ImageRequest) -> Dict[str, Any]:
         # Get actual result size (should be model size)
         result_size_wh = result_img.size if result_img else model_base_size
         
+        # Get device info (forced CPU mode)
+        # device_used = 'cpu'
         # Get device info
         device_used = _get_optimal_device()
-        
         response = {
             result_key: result_base64,
             "mode": request.mode,

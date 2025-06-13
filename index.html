@@ -559,7 +559,7 @@
                     model_type: selectedModel
                 };
 
-                const response = await fetch('http://ec2-54-176-199-188.us-west-1.compute.amazonaws.com:8000/remove-background/', {
+                const response = await fetch('http://localhost:8000/remove-background/', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -575,6 +575,8 @@
                 
                 if (result.mode === 'mask') {
                     // Get mask and create composite image in browser
+                    // The mask comes from model size (384x384 or 512x512) with padding
+                    // We need to properly align it with the original image
                     maskImageData = result.mask_base64_png;
                     const compositeImage = await createCompositeImage(originalImage.src, 'data:image/png;base64,' + result.mask_base64_png);
                     processedImageData = compositeImage.split(',')[1]; // Get base64 part
@@ -657,7 +659,7 @@
                         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
                         const data = imageData.data;
                         
-                        // Create temporary canvas for mask - same size as original
+                        // Create temporary canvas for mask processing
                         const maskCanvas = document.createElement('canvas');
                         const maskCtx = maskCanvas.getContext('2d');
                         maskCanvas.width = canvas.width;
@@ -667,20 +669,46 @@
                         maskCtx.fillStyle = 'black';
                         maskCtx.fillRect(0, 0, maskCanvas.width, maskCanvas.height);
                         
-                        // Calculate how to fit the mask onto the original image
-                        // The mask came from the model size (e.g., 512x512) but may contain padding
-                        // We need to scale it back to match the original image
-                        const scaleX = canvas.width / maskImg.width;
-                        const scaleY = canvas.height / maskImg.height;
-                        const scale = Math.min(scaleX, scaleY);
+                        // Calculate how the original image was scaled and padded to fit model size
+                        // The mask is from model size (e.g. 384x384 or 512x512)
+                        // We need to reverse the scaling and padding that was done on server
                         
-                        const scaledWidth = maskImg.width * scale;
-                        const scaledHeight = maskImg.height * scale;
-                        const offsetX = (canvas.width - scaledWidth) / 2;
-                        const offsetY = (canvas.height - scaledHeight) / 2;
+                        const modelSize = maskImg.width; // Assume square model (384x384 or 512x512)
+                        const originalW = originalImg.width;
+                        const originalH = originalImg.height;
                         
-                        // Draw mask scaled and centered
-                        maskCtx.drawImage(maskImg, offsetX, offsetY, scaledWidth, scaledHeight);
+                        // Calculate the scale factor that was used on server
+                        const serverScale = Math.min(modelSize / originalW, modelSize / originalH);
+                        
+                        // Calculate the scaled dimensions that were used on server
+                        const scaledOnServerW = Math.round(originalW * serverScale);
+                        const scaledOnServerH = Math.round(originalH * serverScale);
+                        
+                        // Calculate padding that was added on server
+                        const paddingX = (modelSize - scaledOnServerW) / 2;
+                        const paddingY = (modelSize - scaledOnServerH) / 2;
+                        
+                        console.log(`Mask alignment: Original ${originalW}×${originalH}, Model ${modelSize}×${modelSize}`);
+                        console.log(`Server scale: ${serverScale.toFixed(3)}, Scaled: ${scaledOnServerW}×${scaledOnServerH}`);
+                        console.log(`Padding: X=${paddingX.toFixed(1)}, Y=${paddingY.toFixed(1)}`);
+                        
+                        // Now we need to extract only the non-padded part of the mask
+                        // and scale it back to original size
+                        
+                        // Create intermediate canvas to extract the relevant part of mask
+                        const extractCanvas = document.createElement('canvas');
+                        const extractCtx = extractCanvas.getContext('2d');
+                        extractCanvas.width = scaledOnServerW;
+                        extractCanvas.height = scaledOnServerH;
+                        
+                        // Extract the non-padded part from mask
+                        extractCtx.drawImage(maskImg, 
+                            paddingX, paddingY, scaledOnServerW, scaledOnServerH,  // source
+                            0, 0, scaledOnServerW, scaledOnServerH                // destination
+                        );
+                        
+                        // Now scale this extracted mask to original image size
+                        maskCtx.drawImage(extractCanvas, 0, 0, originalW, originalH);
                         
                         const maskData = maskCtx.getImageData(0, 0, maskCanvas.width, maskCanvas.height);
                         const mask = maskData.data;
@@ -706,13 +734,13 @@
         // Check API availability and load models info on page load
         window.addEventListener('load', async () => {
             try {
-                const response = await fetch('http://ec2-54-176-199-188.us-west-1.compute.amazonaws.com:8000/');
+                const response = await fetch('http://localhost:8000/');
                 if (response.ok) {
                     console.log('API is available');
                     
                     // Load available models info
                     try {
-                        const modelsResponse = await fetch('http://ec2-54-176-199-188.us-west-1.compute.amazonaws.com/models');
+                        const modelsResponse = await fetch('http://localhost:8000/models');
                         if (modelsResponse.ok) {
                             const modelsData = await modelsResponse.json();
                             console.log('Available models:', modelsData.available_models);

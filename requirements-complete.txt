@@ -1,0 +1,28 @@
+# Complete requirements for AWS GPU deployment
+# Install PyTorch with CUDA first (see installation commands in guide)
+
+# FastAPI web framework and server
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+
+# Image processing
+pillow==10.0.1
+numpy<2.0
+opencv-python-headless==4.8.1.78
+
+# AI background removal
+transparent-background==1.3.3
+
+# Configuration and data handling
+PyYAML==6.0.1
+
+# HTTP client for health checks and utilities
+httpx==0.25.2
+
+# Development tools (optional)
+# albumentations==1.4.15
+# albucore==0.0.16
+
+# Note: PyTorch with CUDA must be installed separately first:
+# pip install torch==2.2.2+cu118 torchvision==0.17.2+cu118 --index-url https://download.pytorch.org/whl/cu118 
